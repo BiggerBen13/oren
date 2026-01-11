@@ -1,5 +1,5 @@
 #+private
-package renderer
+package oren 
 
 import gl "odingl"
 
@@ -7,7 +7,6 @@ import "core:log"
 
 PosIndex :: 0
 TransformationIndex :: 1
-
 
 _gl_Renderer :: struct {
 	vao:                gl.VertexArray,

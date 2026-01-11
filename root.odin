@@ -1,6 +1,6 @@
-package renderer
+package oren
 
-import "core:math/linalg/glsl"
+import gl "odingl"
 
 RENDERER_GL :: #config(RENDERER_GL, true)
 
@@ -42,13 +42,22 @@ _Model :: struct {
 	len_idx:    uint,
 }
 
-// renderer_bind_transformations :: proc(
-// 	renderer: ^Renderer,
-// 	transformations: []Transform,
-// ) {renderer._interface.bind_transformations(&renderer._interface, transformations)}
+renderer_init :: proc(proc_addr: gl.SetProcAddressType) {
+	OPENGL_MAJOR :: 4
+	OPENGL_MINOR :: 1
 
-// renderer_render_model :: proc(renderer: ^Renderer, model: ModelHandle) {
-// }
+	gl.gl_init(proc_addr, OPENGL_MAJOR, OPENGL_MINOR)
+	gl.gl_enable(.DepthTest)
+}
+
+renderer_viewport_set :: proc(x, y, width, height: int) {
+	gl.viewport_set(i32(x), i32(y), i32(width), i32(height))
+}
+
+renderer_clear :: proc(r, g, b, a: f32) {
+	gl.viewport_clear({.Color, .Depth})
+	gl.viewport_clear_color(r, g, b, a)
+}
 
 renderer_make :: proc() -> (renderer: Renderer) {
 	allocator := context.allocator
