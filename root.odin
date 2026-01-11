@@ -67,7 +67,7 @@ renderer_make :: proc() -> (renderer: Renderer) {
 
 	// when RENDERER_GL {
 	renderer._internal = _gl_init_renderer()
-	renderer._interface = gl_renderer(&renderer._internal)
+	renderer._interface = gl_renderer()
 	// }
 
 	return renderer

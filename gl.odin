@@ -8,6 +8,9 @@ import "core:log"
 PosIndex :: 0
 TransformationIndex :: 1
 
+VertexShaderSrc :: #load("shaders/renderer_vert.glsl")
+FragmentShaderSrc :: #load("shaders/renderer_frag.glsl")
+
 _gl_Renderer :: struct {
 	vao:                gl.VertexArray,
 	vertex_buf:         gl.Buffer,
@@ -25,13 +28,13 @@ _gl_init_renderer :: proc() -> (render_int: _gl_Renderer) {
 }
 
 _gl_load_program :: proc(rend: ^_gl_Renderer) {
-	vertex_shad, vert_err := gl.shader_create_from_file("shaders/renderer_vert.glsl", .Vertex)
+	vertex_shad, vert_err := gl.shader_create_from_source(VertexShaderSrc, .Vertex)
 	if vert_err != nil {
 		log.error("couldn't compile vertex shader:", vert_err)
 	}
 	defer gl.shader_delete(vertex_shad)
 
-	frag_shad, frag_err := gl.shader_create_from_file("shaders/renderer_frag.glsl", .Fragment)
+	frag_shad, frag_err := gl.shader_create_from_source(FragmentShaderSrc, .Fragment)
 	if frag_err != nil {
 		log.error("couldn't compile fragment shader:", frag_err)
 	}
@@ -152,7 +155,9 @@ _gl_bind_projection :: proc(ptr: rawptr, projection: ^matrix[4, 4]f32) {
 	gl.uniform_set_4x4f32(0, false, projection)
 }
 
-gl_renderer :: proc(gl_renderer: ^_gl_Renderer) -> RendererInterface {
+gl_renderer :: proc() -> RendererInterface {
+    log.info(_gl_bind_projection)
+
 	return RendererInterface {
 		bind_projection = _gl_bind_projection,
 		bind_transformations = _gl_bind_transformations,
