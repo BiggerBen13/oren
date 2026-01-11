@@ -1,13 +1,11 @@
 package oren
 
 RenderPass :: struct {
-	queues:   [][dynamic]Transform,
-	renderer: ^Renderer,
+	queues: [][dynamic]Transform,
 }
 
-render_pass_create :: proc(renderer: ^Renderer) -> (pass: RenderPass) {
+render_pass_make :: proc(renderer: Renderer) -> (pass: RenderPass) {
 	pass.queues = make([][dynamic]Transform, len(renderer._models))
-	pass.renderer = renderer
 	for &queue in pass.queues {
 		queue = make([dynamic]Transform)
 	}
@@ -18,14 +16,18 @@ render_pass_render_model :: proc(pass: ^RenderPass, model: ModelHandle, transfor
 	append(&pass.queues[model], transform)
 }
 
-render_pass_commit :: proc(pass: ^RenderPass, world_to_clip: ^matrix[4, 4]f32) {
+render_pass_commit :: proc(
+	pass: ^RenderPass,
+	renderer: ^Renderer,
+	world_to_clip: ^matrix[4, 4]f32,
+) {
 	// interface := &pass.renderer._interface
-	internal := &pass.renderer._internal
-	pass.renderer._interface.bind_projection(internal, world_to_clip)
+	internal := renderer._internal
+	renderer._interface.bind_projection(&renderer._internal, world_to_clip)
 	for queue, i in pass.queues {
 		if len(queue) == 0 {continue}
-		pass.renderer._interface.bind_transformations(internal, queue[:])
-		pass.renderer._interface.render_model(internal, pass.renderer._models[i], len(queue))
+		renderer._interface.bind_transformations(&renderer._internal, queue[:])
+		renderer._interface.render_model(&renderer._internal, renderer._models[i], len(queue))
 	}
 }
 
