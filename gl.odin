@@ -1,7 +1,7 @@
 #+private
 package oren
 
-import gl "odingl"
+import gl "vendor:OpenGL"
 
 import "core:log"
 
@@ -9,17 +9,22 @@ PosIndex :: 0
 UvIndex :: 1
 TransformationIndex :: 2
 
+CameraUniformName :: "mvp"
+
+g_camera_uniform_location: i32
+
 VertexShaderSrc :: #load("shaders/renderer_vert.glsl")
 FragmentShaderSrc :: #load("shaders/renderer_frag.glsl")
 
 _gl_Renderer :: struct {
-	vao:                gl.VertexArray,
-	vertex_buf:         gl.Buffer,
-	index_buf:          gl.Buffer,
-	uv_buf:             gl.Buffer,
-	transformation_buf: gl.Buffer,
-	program:            gl.Program,
+	vao:                u32,
+	vertex_buf:         u32,
+	index_buf:          u32,
+	uv_buf:             u32,
+	transformation_buf: u32,
+	program:            u32,
 }
+
 
 _gl_init_renderer :: proc() -> (render_int: _gl_Renderer) {
 	_gl_create_buffers(&render_int)
@@ -29,126 +34,177 @@ _gl_init_renderer :: proc() -> (render_int: _gl_Renderer) {
 	return render_int
 }
 
+get_shader_status :: proc(shader: u32) -> (ok: bool) {
+	status, log_len: i32
+	gl.GetShaderiv(shader, gl.COMPILE_STATUS, &status)
+	if status != 0 {
+		return true
+	}
+
+	gl.GetShaderiv(shader, gl.INFO_LOG_LENGTH, &log_len)
+
+	info_log := make([]u8, log_len, context.temp_allocator)
+	gl.GetShaderInfoLog(shader, log_len, nil, raw_data(info_log))
+
+	log.logf(.Error, "OPENGL SHADER_INFO: %s", string(info_log))
+	return false
+}
+
+get_link_status :: proc(program: u32) -> (ok: bool) {
+	status, log_len: i32
+	gl.GetProgramiv(program, gl.LINK_STATUS, &status)
+	if status != 0 {
+		return true
+	}
+
+	gl.GetProgramiv(program, gl.INFO_LOG_LENGTH, &log_len)
+
+	info_log := make([]u8, log_len, context.temp_allocator)
+	gl.GetProgramInfoLog(program, log_len, nil, raw_data(info_log))
+
+	log.logf(.Error, "OPENGL LINK_INFO: %s", string(info_log))
+	return false
+}
+
+compile_shader_from_source :: proc(src: []u8, type: u32) -> (shader: u32) {
+	source_len := i32(len(src))
+	source := cstring(raw_data(src))
+	shader = gl.CreateShader(type)
+	gl.ShaderSource(shader, 1, &source, &source_len)
+	gl.CompileShader(shader)
+	if !get_shader_status(shader) {
+		panic("couldn't compile shader")
+	}
+	return shader
+}
+
 _gl_load_program :: proc(rend: ^_gl_Renderer) {
-	vertex_shad, vert_err := gl.shader_create_from_source(VertexShaderSrc, .Vertex)
-	if vert_err != nil {
-		log.error("couldn't compile vertex shader:", vert_err)
-	}
-	defer gl.shader_delete(vertex_shad)
+	vertex_shad := compile_shader_from_source(VertexShaderSrc, gl.VERTEX_SHADER)
+	defer gl.DeleteShader(vertex_shad)
 
-	frag_shad, frag_err := gl.shader_create_from_source(FragmentShaderSrc, .Fragment)
-	if frag_err != nil {
-		log.error("couldn't compile fragment shader:", frag_err)
-	}
-	defer gl.shader_delete(frag_shad)
-	shaders := [?]gl.Shader{vertex_shad, frag_shad}
 
-	program, prog_err := gl.program_create_and_link(shaders[:])
-	if prog_err != nil {
-		log.error("couldn't link program:", prog_err)
+	frag_shad := compile_shader_from_source(FragmentShaderSrc, gl.FRAGMENT_SHADER)
+	defer gl.DeleteShader(frag_shad)
+
+	program := gl.CreateProgram()
+
+	gl.AttachShader(program, vertex_shad)
+	gl.AttachShader(program, frag_shad)
+
+	gl.LinkProgram(program)
+
+	if !get_link_status(program) {
+		panic("couldn't link program")
 	}
+   
+    g_camera_uniform_location = gl.GetUniformLocation(program, CameraUniformName)
+
 	rend.program = program
 }
 
 _gl_create_buffers :: proc(rend: ^_gl_Renderer) {
-	gl.vertex_array_create(&rend.vao)
-	gl.buffer_create(&rend.vertex_buf)
-	gl.buffer_create(&rend.index_buf)
-	gl.buffer_create(&rend.uv_buf)
-	gl.buffer_create(&rend.transformation_buf)
+	gl.GenVertexArrays(1, &rend.vao)
+	gl.GenBuffers(1, &rend.vertex_buf)
+	gl.GenBuffers(1, &rend.index_buf)
+	gl.GenBuffers(1, &rend.uv_buf)
+	gl.GenBuffers(1, &rend.transformation_buf)
 }
 
 _gl_configure_buffers :: proc(rend: ^_gl_Renderer) {
-	gl.vertex_array_bind(rend.vao)
-	defer gl.vertex_array_unbind()
+	gl.BindVertexArray(rend.vao)
+	defer gl.BindVertexArray(0)
 
-	gl.buffer_bind(rend.index_buf, .ElementArrayBuffer)
+	// INDICES
+	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, rend.index_buf)
+	// VERTICES
+	gl.BindBuffer(gl.ARRAY_BUFFER, rend.vertex_buf)
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 3 * size_of(f32), 0)
 
-	gl.buffer_bind(rend.vertex_buf, .ArrayBuffer)
-	vertex_attrib := gl.AttribDescriptor {
-		size      = 3,
-		type      = .Float,
-		normalize = false,
-		stride    = 3 * size_of(f32),
-		pointer   = 0,
-	}
+	// UVS
+	gl.BindBuffer(gl.ARRAY_BUFFER, rend.uv_buf)
+	gl.VertexAttribPointer(1, 2, gl.FLOAT, false, 2 * size_of(f32), 0)
+	gl.BindBuffer(gl.ARRAY_BUFFER, rend.transformation_buf)
 
-	gl.vertex_attributes_set(PosIndex, vertex_attrib)
-
-	gl.buffer_bind(rend.uv_buf, .ArrayBuffer)
-
-	uv_attrib := gl.AttribDescriptor {
-		size      = 2,
-		type      = .Float,
-		normalize = false,
-		stride    = 2 * size_of(f32),
-		pointer   = 0,
-	}
-
-	gl.vertex_attributes_set(UvIndex, vertex_attrib)
-
-	gl.buffer_bind(rend.transformation_buf, .ArrayBuffer)
-
+	// Transformations
 	column_size :: 4 * size_of(f32)
 	mat_size :: size_of(matrix[4, 4]f32)
 
-	trans_row_attrib := gl.AttribDescriptor {
-		size      = 4,
-		type      = .Float,
-		normalize = false,
-		stride    = mat_size,
-		pointer   = 0,
-	}
+	pointer: uintptr = 0
 
-	gl.vertex_attributes_set(TransformationIndex, trans_row_attrib)
-	trans_row_attrib.pointer += column_size
-	gl.vertex_attributes_set(TransformationIndex + 1, trans_row_attrib)
-	trans_row_attrib.pointer += column_size
-	gl.vertex_attributes_set(TransformationIndex + 2, trans_row_attrib)
-	trans_row_attrib.pointer += column_size
-	gl.vertex_attributes_set(TransformationIndex + 3, trans_row_attrib)
+	gl.VertexAttribPointer(TransformationIndex, 4, gl.FLOAT, false, mat_size, pointer)
+	pointer += column_size
+	gl.VertexAttribPointer(TransformationIndex + 1, 4, gl.FLOAT, false, mat_size, pointer)
+	pointer += column_size
+	gl.VertexAttribPointer(TransformationIndex + 2, 4, gl.FLOAT, false, mat_size, pointer)
+	pointer += column_size
+	gl.VertexAttribPointer(TransformationIndex + 3, 4, gl.FLOAT, false, mat_size, pointer)
 
-	gl.vertex_attributes_set_divisor(TransformationIndex, 1)
-	gl.vertex_attributes_set_divisor(TransformationIndex + 1, 1)
-	gl.vertex_attributes_set_divisor(TransformationIndex + 2, 1)
-	gl.vertex_attributes_set_divisor(TransformationIndex + 3, 1)
+	gl.VertexAttribDivisor(TransformationIndex, 1)
+	gl.VertexAttribDivisor(TransformationIndex + 1, 1)
+	gl.VertexAttribDivisor(TransformationIndex + 2, 1)
+	gl.VertexAttribDivisor(TransformationIndex + 3, 1)
 
-	gl.vertex_attributes_enable(PosIndex)
-	gl.vertex_attributes_enable(TransformationIndex)
-	gl.vertex_attributes_enable(TransformationIndex + 1)
-	gl.vertex_attributes_enable(TransformationIndex + 2)
-	gl.vertex_attributes_enable(TransformationIndex + 3)
+	gl.EnableVertexAttribArray(PosIndex)
+	gl.EnableVertexAttribArray(UvIndex)
+	gl.EnableVertexAttribArray(TransformationIndex)
+	gl.EnableVertexAttribArray(TransformationIndex + 1)
+	gl.EnableVertexAttribArray(TransformationIndex + 2)
+	gl.EnableVertexAttribArray(TransformationIndex + 3)
 }
 
 _gl_bind_transformations :: proc(ptr: rawptr, transformations: []Transform) {
 	rend := cast(^_gl_Renderer)ptr
 
-	gl.vertex_array_bind(rend.vao)
-	defer gl.vertex_array_unbind()
+	gl.BindBuffer(gl.ARRAY_BUFFER, rend.transformation_buf)
+	defer gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 
-	gl.buffer_bind(rend.transformation_buf, .ArrayBuffer)
-	gl.buffer_data(.ArrayBuffer, transformations, .StaticDraw)
+	gl.BufferData(
+		gl.ARRAY_BUFFER,
+		len(transformations) * size_of(Transform),
+		raw_data(transformations),
+		gl.STATIC_DRAW,
+	)
 }
 
 _gl_bind_model_data :: proc(ptr: rawptr, vertices: []Vertex, indices: []Index, uvs: []Uv) {
 	rend := cast(^_gl_Renderer)ptr
-	gl.buffer_bind(rend.vertex_buf, .ArrayBuffer)
-	gl.buffer_data(.ArrayBuffer, vertices, .StaticDraw)
-	gl.buffer_bind(rend.index_buf, .ElementArrayBuffer)
-	gl.buffer_data(.ElementArrayBuffer, indices, .StaticDraw)
-	gl.buffer_bind(rend.uv_buf, .ArrayBuffer)
-	gl.buffer_data(.ArrayBuffer, uvs, .StaticDraw)
+
+	defer gl.BindBuffer(gl.ARRAY_BUFFER, 0)
+
+	// Vertices
+	gl.BindBuffer(gl.ARRAY_BUFFER, rend.vertex_buf)
+	gl.BufferData(
+		gl.ARRAY_BUFFER,
+		len(vertices) * size_of(Vertex),
+		raw_data(vertices),
+		gl.STATIC_DRAW,
+	)
+
+	// Uvs
+	gl.BindBuffer(gl.ARRAY_BUFFER, rend.uv_buf)
+	gl.BufferData(gl.ARRAY_BUFFER, len(uvs) * size_of(Uv), raw_data(uvs), gl.STATIC_DRAW)
+
+	// Indices
+	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, rend.index_buf)
+	gl.BufferData(
+		gl.ELEMENT_ARRAY_BUFFER,
+		len(indices) * size_of(Index),
+		raw_data(indices),
+		gl.STATIC_DRAW,
+	)
 }
 
 _gl_draw_model :: proc(ptr: rawptr, model: _Model, count: uint) {
 	rend := cast(^_gl_Renderer)ptr
-	gl.vertex_array_bind(rend.vao)
-	defer gl.vertex_array_unbind()
-	gl.program_use(rend.program)
-	gl.draw_elements_instanced_base_vertex(
-		.Triangles,
+
+	gl.BindVertexArray(rend.vao)
+	defer gl.BindVertexArray(0)
+
+	gl.UseProgram(rend.program)
+	gl.DrawElementsInstancedBaseVertex(
+		gl.TRIANGLES,
 		i32(model.len_idx),
-		.uInt,
+		gl.UNSIGNED_INT,
 		cast(rawptr)uintptr(model.start_idx * size_of(Index)),
 		i32(count),
 		i32(model.start_vert),
@@ -157,17 +213,19 @@ _gl_draw_model :: proc(ptr: rawptr, model: _Model, count: uint) {
 
 _gl_destroy :: proc(ptr: rawptr) {
 	rend := cast(^_gl_Renderer)ptr
-	gl.vertex_array_delete(&rend.vao)
-	gl.buffer_delete(&rend.index_buf)
-	gl.buffer_delete(&rend.vertex_buf)
-	gl.buffer_delete(&rend.transformation_buf)
-	gl.program_delete(rend.program)
+	gl.DeleteVertexArrays(1, &rend.vao)
+	gl.DeleteBuffers(1, &rend.index_buf)
+	gl.DeleteBuffers(1, &rend.vertex_buf)
+	gl.DeleteBuffers(1, &rend.transformation_buf)
+	gl.DeleteBuffers(1, &rend.uv_buf)
+	gl.DeleteProgram(rend.program)
 }
 
 _gl_bind_projection :: proc(ptr: rawptr, projection: ^matrix[4, 4]f32) {
 	rendr := cast(^_gl_Renderer)ptr
-	gl.program_use(rendr.program)
-	gl.uniform_set_4x4f32(0, false, projection)
+
+	gl.UseProgram(rendr.program)
+	gl.UniformMatrix4fv(g_camera_uniform_location, 1, false, raw_data(projection))
 }
 
 gl_renderer :: proc() -> RendererInterface {

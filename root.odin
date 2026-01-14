@@ -1,6 +1,6 @@
 package oren
 
-import gl "odingl"
+import gl "vendor:OpenGL"
 
 RENDERER_GL :: #config(RENDERER_GL, true)
 
@@ -45,21 +45,21 @@ _Model :: struct {
 	len_idx:    uint,
 }
 
-renderer_init :: proc(proc_addr: gl.SetProcAddressType) {
+renderer_init :: proc(proc_addr: gl.Set_Proc_Address_Type) {
 	OPENGL_MAJOR :: 4
 	OPENGL_MINOR :: 1
 
-	gl.gl_init(proc_addr, OPENGL_MAJOR, OPENGL_MINOR)
-	gl.gl_enable(.DepthTest)
+	gl.load_up_to(OPENGL_MAJOR, OPENGL_MINOR, proc_addr)
+	gl.Enable(gl.DEPTH_TEST)
 }
 
 renderer_viewport_set :: proc(x, y, width, height: int) {
-	gl.viewport_set(i32(x), i32(y), i32(width), i32(height))
+	gl.Viewport(i32(x), i32(y), i32(width), i32(height))
 }
 
 renderer_clear :: proc(r, g, b, a: f32) {
-	gl.viewport_clear({.Color, .Depth})
-	gl.viewport_clear_color(r, g, b, a)
+	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+	gl.ClearColor(r, g, b, a)
 }
 
 renderer_make :: proc() -> (renderer: Renderer) {

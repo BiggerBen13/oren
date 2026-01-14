@@ -11,6 +11,6 @@ out vec2 uvCoords; // specify a color output to the fragment shader
 void main()
 {
     mat4 trans = mat4(1.0);
-    gl_Position = mvp * transformation * vec4(aPos, 1.0);
+    gl_Position = mvp * transformation * vec4(aPos, 1.0); // mvp * transformation * 
     uvCoords = uv;
 }

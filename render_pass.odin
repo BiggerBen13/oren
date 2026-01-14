@@ -4,8 +4,8 @@ RenderPass :: struct {
 	queues: [][dynamic]Transform,
 }
 
-render_pass_make :: proc(renderer: Renderer) -> (pass: RenderPass) {
-	pass.queues = make([][dynamic]Transform, len(renderer._models))
+render_pass_make :: proc(renderer: Renderer, allocator := context.allocator) -> (pass: RenderPass) {
+	pass.queues = make([][dynamic]Transform, len(renderer._models), allocator)
 	for &queue in pass.queues {
 		queue = make([dynamic]Transform)
 	}
@@ -37,9 +37,9 @@ render_pass_reset :: proc(pass: ^RenderPass) {
 	}
 }
 
-render_pass_delete :: proc(pass: ^RenderPass) {
+render_pass_delete :: proc(pass: ^RenderPass, allocator := context.allocator) {
 	for queue in pass.queues {
 		delete(queue)
 	}
-	delete(pass.queues)
+	delete(pass.queues, allocator)
 }
