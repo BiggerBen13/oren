@@ -1,12 +1,13 @@
 #+private
-package oren 
+package oren
 
 import gl "odingl"
 
 import "core:log"
 
 PosIndex :: 0
-TransformationIndex :: 1
+UvIndex :: 1
+TransformationIndex :: 2
 
 VertexShaderSrc :: #load("shaders/renderer_vert.glsl")
 FragmentShaderSrc :: #load("shaders/renderer_frag.glsl")
@@ -15,6 +16,7 @@ _gl_Renderer :: struct {
 	vao:                gl.VertexArray,
 	vertex_buf:         gl.Buffer,
 	index_buf:          gl.Buffer,
+	uv_buf:             gl.Buffer,
 	transformation_buf: gl.Buffer,
 	program:            gl.Program,
 }
@@ -52,6 +54,7 @@ _gl_create_buffers :: proc(rend: ^_gl_Renderer) {
 	gl.vertex_array_create(&rend.vao)
 	gl.buffer_create(&rend.vertex_buf)
 	gl.buffer_create(&rend.index_buf)
+	gl.buffer_create(&rend.uv_buf)
 	gl.buffer_create(&rend.transformation_buf)
 }
 
@@ -71,6 +74,18 @@ _gl_configure_buffers :: proc(rend: ^_gl_Renderer) {
 	}
 
 	gl.vertex_attributes_set(PosIndex, vertex_attrib)
+
+	gl.buffer_bind(rend.uv_buf, .ArrayBuffer)
+
+	uv_attrib := gl.AttribDescriptor {
+		size      = 2,
+		type      = .Float,
+		normalize = false,
+		stride    = 2 * size_of(f32),
+		pointer   = 0,
+	}
+
+	gl.vertex_attributes_set(UvIndex, vertex_attrib)
 
 	gl.buffer_bind(rend.transformation_buf, .ArrayBuffer)
 
@@ -112,17 +127,17 @@ _gl_bind_transformations :: proc(ptr: rawptr, transformations: []Transform) {
 	defer gl.vertex_array_unbind()
 
 	gl.buffer_bind(rend.transformation_buf, .ArrayBuffer)
-	gl.buffer_data(rend.transformation_buf, .ArrayBuffer, transformations, .StaticDraw)
+	gl.buffer_data(.ArrayBuffer, transformations, .StaticDraw)
 }
 
-_gl_bind_model_data :: proc(ptr: rawptr, vertices: []Vertex, indices: []Index) {
+_gl_bind_model_data :: proc(ptr: rawptr, vertices: []Vertex, indices: []Index, uvs: []Uv) {
 	rend := cast(^_gl_Renderer)ptr
-	gl.vertex_array_bind(rend.vao)
-	defer gl.vertex_array_unbind()
 	gl.buffer_bind(rend.vertex_buf, .ArrayBuffer)
-	gl.buffer_data(rend.vertex_buf, .ArrayBuffer, vertices, .StaticDraw)
+	gl.buffer_data(.ArrayBuffer, vertices, .StaticDraw)
 	gl.buffer_bind(rend.index_buf, .ElementArrayBuffer)
-	gl.buffer_data(rend.index_buf, .ElementArrayBuffer, indices, .StaticDraw)
+	gl.buffer_data(.ElementArrayBuffer, indices, .StaticDraw)
+	gl.buffer_bind(rend.uv_buf, .ArrayBuffer)
+	gl.buffer_data(.ArrayBuffer, uvs, .StaticDraw)
 }
 
 _gl_draw_model :: proc(ptr: rawptr, model: _Model, count: uint) {
@@ -156,7 +171,7 @@ _gl_bind_projection :: proc(ptr: rawptr, projection: ^matrix[4, 4]f32) {
 }
 
 gl_renderer :: proc() -> RendererInterface {
-    log.info(_gl_bind_projection)
+	log.info(_gl_bind_projection)
 
 	return RendererInterface {
 		bind_projection = _gl_bind_projection,

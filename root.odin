@@ -11,6 +11,7 @@ internalRenderer :: _gl_Renderer
 Renderer :: struct {
 	vertex_buf: [dynamic]Vertex,
 	index_buf:  [dynamic]Index,
+	uv_buf:     [dynamic]Uv,
 	_internal:  internalRenderer,
 	_interface: RendererInterface,
 	_models:    [dynamic]_Model,
@@ -20,7 +21,7 @@ Renderer :: struct {
 RendererInterface :: struct {
 	bind_projection:      proc(_: rawptr, _: ^matrix[4, 4]f32),
 	bind_transformations: proc(_: rawptr, _: []Transform),
-	bind_model_data:      proc(_: rawptr, _: []Vertex, _: []Index),
+	bind_model_data:      proc(_: rawptr, _: []Vertex, _: []Index, _: []Uv),
 	render_model:         proc(_: rawptr, model: _Model, count: uint),
 	destroy:              proc(_: rawptr),
 }
@@ -29,6 +30,8 @@ RendererInterface :: struct {
 Vertex :: [3]f32
 
 Index :: u32
+
+Uv :: [2]f32
 
 ModelHandle :: distinct uint
 
@@ -63,6 +66,7 @@ renderer_make :: proc() -> (renderer: Renderer) {
 	allocator := context.allocator
 	renderer.vertex_buf = make([dynamic]Vertex, allocator)
 	renderer.index_buf = make([dynamic]Index, allocator)
+	renderer.uv_buf = make([dynamic]Uv, allocator)
 	renderer._models = make([dynamic]_Model, allocator)
 
 	// when RENDERER_GL {
@@ -76,6 +80,7 @@ renderer_make :: proc() -> (renderer: Renderer) {
 renderer_delete :: proc(renderer: ^Renderer) {
 	delete(renderer.index_buf)
 	delete(renderer.vertex_buf)
+	delete(renderer.uv_buf)
 	delete(renderer._models)
 	renderer._interface.destroy(&renderer._internal)
 }
@@ -85,6 +90,7 @@ renderer_load_model :: proc(
 	renderer: ^Renderer,
 	vertex_buf: []Vertex,
 	index_buf: []u32,
+    uv_buf: []Uv,
 ) -> (
 	handle: ModelHandle,
 ) {
@@ -96,6 +102,7 @@ renderer_load_model :: proc(
 
 	append_elems(&renderer.vertex_buf, ..vertex_buf)
 	append_elems(&renderer.index_buf, ..index_buf)
+	append_elems(&renderer.uv_buf, ..uv_buf)
 	append_elems(
 		&renderer._models,
 		_Model {
@@ -110,6 +117,7 @@ renderer_load_model :: proc(
 		&renderer._internal,
 		renderer.vertex_buf[:],
 		renderer.index_buf[:],
+        renderer.uv_buf[:],
 	)
 
 	return handle
